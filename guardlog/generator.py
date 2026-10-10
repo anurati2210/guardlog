@@ -87,6 +87,13 @@ def write_logs(out_path, n_lines=10000, seed=42):
     return len(lines)
 
 
+def get_attacker_ips(seed=42):
+    """The attacker IPs that generate_logs() uses for this seed (lets the demo threat feed know some of them)."""
+    rng = random.Random(seed)
+    for _ in range(200):          # same random draws as generate_logs()
+        random_ip(rng)
+    return [random_ip(rng) for _ in range(12)]
+
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(description="Generate simulated auth/server logs")
     ap.add_argument("--lines", type=int, default=10000)
