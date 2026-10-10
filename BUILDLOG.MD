@@ -24,3 +24,13 @@
 - AI did: boilerplate, unit tests, benchmark printing
 - I decided: Aho-Corasick as the default because signature lists grow; lowercase matching; one alert per (IP, pattern)
 - I rejected: Python's built-in `in` as the "algorithm" (hides the DAA work); regex alternation (hard to analyse, can backtrack badly)
+
+## Hour 7-8: Engine and dashboard (baseline)
+- AI did: Streamlit layout and boilerplate
+- I decided: one-pass engine over a shared detector interface; template advice instead of an API so the demo never fails offline; Bloom filters cached because they are read-only
+- I rejected: database storage, live log tailing (not needed for the baseline)
+
+## Benchmarks
+- AI did: benchmark script and plotting boilerplate
+- I decided: compare each algorithm to a naive baseline on growing input sizes; report results honestly, including where the naive version is competitive
+- I rejected: 1M-line naive window runs (too slow to be useful)
