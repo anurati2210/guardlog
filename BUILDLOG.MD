@@ -65,3 +65,6 @@
 - Finding: Bloom filter (1% false positives) plus a 3-hit threshold still raised alerts on busy legitimate IPs, because ~270 failed attempts means ~2.7 false hits on average
 - I decided: password-guessing alert needs both 3+ hits AND at least 50% of the IP's failed attempts to be common passwords (real guessers use them almost every time, typos hit only by chance)
 - I rejected: raising the hit threshold (just moves the problem to busier IPs); lowering the Bloom filter false-positive rate (costs more memory and still never reaches zero)
+
+
+- Finding: dashboard compared brute-force alerts to all attacker IPs, but scan-only and payload-only attackers can't produce failed-login bursts; now measured against attackers a sorted log lets the detector catch
