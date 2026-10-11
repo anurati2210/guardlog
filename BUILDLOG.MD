@@ -34,3 +34,14 @@
 - AI did: benchmark script and plotting boilerplate
 - I decided: compare each algorithm to a naive baseline on growing input sizes; report results honestly, including where the naive version is competitive
 - I rejected: 1M-line naive window runs (too slow to be useful)
+
+## Challenge Card 1: out-of-order logs
+- Analysis: only the sliding-window detector depends on order; ranking, Bloom filter and signatures are order-independent
+- I decided: sorted per-IP insertion with retroactive burst check (alerts fire on arrival, no buffering); pruning by max lateness; regression test against the old detector on in-order logs
+- I rejected: reorder buffer with watermark (would delay every alert by up to 10 minutes, which breaks near-real-time)
+
+
+## Challenge Card 1: baseline measurement
+- AI did: scenario generator and scoring boilerplate
+- I decided: model the card as bulk log sync (delayed lines arrive as a batch), not just random jitter, because jitter alone did not break the old detector (0 legit IPs flagged); added busy-but-benign IPs (max 9 failures/60 s) so false positives are measurable
+- Finding: old detector's deque stops popping when old-timestamp batches arrive behind newer events, so a batch counts as one burst
