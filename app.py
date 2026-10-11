@@ -2,8 +2,9 @@ import pandas as pd
 import streamlit as st
 
 from guardlog.engine import build_engine, build_filters
-from guardlog.generator import generate_logs
+from guardlog.generator import generate_logs, get_attacker_ips
 from guardlog.parser import parse_lines
+from guardlog.scenario import batch_sync, make_scenario, score
 
 st.set_page_config(page_title="GuardLog", page_icon="🛡️", layout="wide")
 
@@ -14,8 +15,16 @@ def get_filters(seed):
 
 
 @st.cache_data
-def make_logs(n_lines, seed):
-    return generate_logs(n_lines, seed)
+def make_data(n_lines, seed, with_busy, pct, interval_min):
+    if with_busy:
+        lines, attackers, busy = make_scenario(n_lines, seed)
+    else:
+        lines = generate_logs(n_lines, seed)
+        attackers, busy = set(get_attacker_ips(seed)), set()
+    stats = None
+    if pct > 0:
+        lines, stats = batch_sync(lines, frac=pct / 100, interval=interval_min * 60, seed=1)
+    return lines, attackers, busy, stats
 
 
 st.title("🛡️ GuardLog")
@@ -26,20 +35,31 @@ with st.sidebar:
     source = st.radio("Choose data", ["Generate sample logs", "Upload a log file"])
     seed = 42
     uploaded = None
+    with_busy = False
     if source == "Generate sample logs":
         n_lines = st.slider("Lines", 1000, 200000, 10000, step=1000)
         seed = int(st.number_input("Seed", value=42, step=1))
+        with_busy = st.checkbox("Add busy legitimate IPs (to test false positives)", value=False)
     else:
         uploaded = st.file_uploader("Log file (.log or .txt)", type=["log", "txt"])
+
+    st.header("Log sync delay (Challenge 1)")
+    pct = st.slider("Share of logs delayed (%)", 0, 50, 0, step=5)
+    interval_min = st.slider("Sync interval / max delay (minutes)", 1, 15, 10)
+    handling = st.radio("Out-of-order handling", ["Order-tolerant (new)", "Original (assumes sorted)"])
+
     st.header("Detection settings")
     window = st.slider("Window (seconds)", 10, 300, 60, step=10)
     threshold = st.slider("Failed logins to raise an alert", 3, 50, 10)
     top_k = st.slider("Top attackers to show", 3, 20, 10)
 
 if source == "Generate sample logs":
-    lines = make_logs(int(n_lines), seed)
+    lines, attackers, busy, stats = make_data(int(n_lines), seed, with_busy, pct, interval_min)
 elif uploaded is not None:
     lines = uploaded.getvalue().decode("utf-8", errors="replace").splitlines()
+    attackers, busy, stats = set(), set(), None
+    if pct > 0:
+        lines, stats = batch_sync(lines, frac=pct / 100, interval=interval_min * 60, seed=1)
 else:
     st.info("Upload a log file in the sidebar, or switch to generated sample logs.")
     st.stop()
@@ -49,7 +69,14 @@ if not events:
     st.error("No valid log lines found. Expected: timestamp ip=... user=... action=... pw=... path=...")
     st.stop()
 
-report = build_engine(get_filters(seed), window, threshold).run(events, top_k)
+# Run both versions on the same (possibly delayed) logs, so they can be compared side by side
+filters = get_filters(seed)
+runs = {}
+for tol in (False, True):
+    eng = build_engine(filters, window, threshold, tol)
+    runs[tol] = (eng, eng.run(events, top_k))
+use_tolerant = handling.startswith("Order-tolerant")
+engine, report = runs[use_tolerant]
 alerts = report["alerts"]
 
 c1, c2, c3, c4 = st.columns(4)
@@ -59,6 +86,30 @@ c3.metric("Suspicious IPs", len({a["ip"] for a in alerts}))
 c4.metric("Analysis time", f"{report['seconds'] * 1000:.0f} ms")
 if malformed:
     st.caption(f"{malformed} malformed lines were skipped.")
+if stats:
+    st.caption(f"Log sync simulation: {stats['delayed']:,} lines delayed, {stats['out_of_order']:,} arrived "
+               f"out of order, worst lateness {stats['max_lateness_s']} s.")
+
+st.subheader("Out-of-order handling: original vs order-tolerant")
+rows, tolerant_ok = [], None
+for tol, label in ((False, "Original (assumes sorted logs)"), (True, "Order-tolerant (new)")):
+    brute = [a for a in runs[tol][1]["alerts"] if a["type"] == "BRUTE_FORCE"]
+    row = {"Detector": label, "Brute-force alerts": len(brute)}
+    if attackers:
+        s = score(brute, attackers, busy)
+        row["Attackers caught"] = f"{s['attackers_caught']}/{len(attackers)}"
+        row["Legit IPs flagged"] = s["legit_ips_flagged"]
+        row["False-positive alerts"] = f"{s['fp_alert_rate'] * 100:.1f}%"
+        if tol:
+            tolerant_ok = s["fp_alert_rate"] < 0.05 and s["attackers_caught"] == len(attackers)
+    rows.append(row)
+st.dataframe(pd.DataFrame(rows), hide_index=True)
+if tolerant_ok is True:
+    st.success("Order-tolerant detector: false positives under 5% and every attacker caught.")
+elif tolerant_ok is False:
+    st.warning("Order-tolerant detector missed the 5% false-positive target or an attacker on this data.")
+if not attackers:
+    st.caption("False-positive rates need ground truth, so they are shown for generated sample logs only.")
 
 if not alerts:
     st.success("No attacks detected in this log.")

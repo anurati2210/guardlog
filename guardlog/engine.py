@@ -10,6 +10,7 @@ from .detectors.signature import SignatureDetector
 from .detectors.window import SlidingWindowDetector
 from .generator import COMMON_PASSWORDS, get_attacker_ips
 from .ranking import AttackerTracker
+from .detectors.tolerant import OrderTolerantWindowDetector
 
 SEVERITY = {"BRUTE_FORCE": "High", "SIGNATURE_MATCH": "High",
             "KNOWN_BAD_IP": "Medium", "COMMON_PASSWORD_GUESSING": "Medium"}
@@ -86,11 +87,12 @@ class Engine:
             "seconds": time.perf_counter() - t0,
         }
 
-
-def build_engine(filters, window=60, threshold=10):
+def build_engine(filters, window=60, threshold=10, tolerant=True):
     bad_ips, common_pw = filters
+    window_detector = (OrderTolerantWindowDetector(window=window, threshold=threshold) if tolerant
+                       else SlidingWindowDetector(window=window, threshold=threshold))
     return Engine([
-        SlidingWindowDetector(window=window, threshold=threshold),
+        window_detector,
         SignatureDetector(method="aho"),
         ReputationDetector(bad_ips, common_pw),
     ])

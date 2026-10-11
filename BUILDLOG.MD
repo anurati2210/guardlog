@@ -52,3 +52,10 @@
 - I decided: per-IP sorted failure times with insertion at the true event time and a re-check of only the windows containing the new line; fast path for on-time lines; pruning by max_lateness (900 s, above the 600 s requirement) so memory stays bounded; cooldown in event time; old detector kept for regression and comparison
 - I rejected: reorder buffer with watermark (delays every alert by up to 10 minutes, breaks near-real-time); trusting arrival order; widening the threshold to hide false positives (would miss real attacks)
 - Result: false-positive rate reduced from 49% (jitter) and 74% (batch) to below 5% (see table), all 12 attackers still caught, identical alerts on in-order logs
+
+
+## Challenge Card 1: integration
+- AI did: dashboard layout and boilerplate
+- I decided: order-tolerant detector is the engine default (identical alerts on in-order logs, regression-tested); dashboard runs both detectors on the same delayed logs so the comparison is side by side; the delay is simulated as a bulk log sync because that is how the card says logs arrive; headline metric is false-positive ALERT rate, with IP-level rate reported alongside it
+- Trade-off: order-tolerant detector is about 2.7x slower than the original (about 885k vs 2.4M events/s) but still far above real log volumes, and it removes the false alerts
+- I rejected: reorder buffer (adds up to 10 minutes of alert delay)
