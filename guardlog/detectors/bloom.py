@@ -47,12 +47,15 @@ class ReputationDetector(Detector):
     """Flags (1) IPs from a threat feed, (2) IPs guessing common passwords."""
     name = "reputation"
 
-    def __init__(self, bad_ips, common_passwords, pw_threshold=3):
+    def __init__(self, bad_ips, common_passwords, pw_threshold=3, pw_ratio=0.5):
         self.bad_ips = bad_ips                # anything supporting `in`
         self.common_pw = common_passwords     # anything supporting `in`
-        self.pw_threshold = pw_threshold      # hits needed, so one false positive never alerts
+        self.pw_threshold = pw_threshold      # minimum common-password hits
+        self.pw_ratio = pw_ratio              # and at least this share of the IP's failed attempts
         self.seen_bad = set()
         self.pw_hits = Counter()
+        self.pw_total = Counter()
+        self.pw_alerted = set()
 
     def process(self, event):
         alerts = []
@@ -60,14 +63,17 @@ class ReputationDetector(Detector):
             self.seen_bad.add(event.ip)
             alerts.append({"type": "KNOWN_BAD_IP", "ip": event.ip, "time": event.time_str,
                            "detail": f"{event.ip} appears in the threat feed"})
-        if event.action == "LOGIN_FAIL" and event.pw != "-" and event.pw in self.common_pw:
-            self.pw_hits[event.ip] += 1
-            if self.pw_hits[event.ip] == self.pw_threshold:
+        if event.action == "LOGIN_FAIL" and event.pw != "-":
+            self.pw_total[event.ip] += 1
+            if event.pw in self.common_pw:
+                self.pw_hits[event.ip] += 1
+            hits, total = self.pw_hits[event.ip], self.pw_total[event.ip]
+            if hits >= self.pw_threshold and hits / total >= self.pw_ratio and event.ip not in self.pw_alerted:
+                self.pw_alerted.add(event.ip)
                 alerts.append({"type": "COMMON_PASSWORD_GUESSING", "ip": event.ip,
                                "time": event.time_str,
-                               "detail": f"{event.ip} tried {self.pw_threshold}+ common passwords"})
+                               "detail": f"{event.ip} used common passwords in {hits} of {total} failed logins"})
         return alerts
-
 
 if __name__ == "__main__":
     from ..generator import COMMON_PASSWORDS

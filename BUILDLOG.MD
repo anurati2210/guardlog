@@ -59,3 +59,9 @@
 - I decided: order-tolerant detector is the engine default (identical alerts on in-order logs, regression-tested); dashboard runs both detectors on the same delayed logs so the comparison is side by side; the delay is simulated as a bulk log sync because that is how the card says logs arrive; headline metric is false-positive ALERT rate, with IP-level rate reported alongside it
 - Trade-off: order-tolerant detector is about 2.7x slower than the original (about 885k vs 2.4M events/s) but still far above real log volumes, and it removes the false alerts
 - I rejected: reorder buffer (adds up to 10 minutes of alert delay)
+
+
+## Reputation detector fix
+- Finding: Bloom filter (1% false positives) plus a 3-hit threshold still raised alerts on busy legitimate IPs, because ~270 failed attempts means ~2.7 false hits on average
+- I decided: password-guessing alert needs both 3+ hits AND at least 50% of the IP's failed attempts to be common passwords (real guessers use them almost every time, typos hit only by chance)
+- I rejected: raising the hit threshold (just moves the problem to busier IPs); lowering the Bloom filter false-positive rate (costs more memory and still never reaches zero)

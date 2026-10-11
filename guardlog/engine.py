@@ -82,7 +82,7 @@ class Engine:
         return {
             "alerts": alerts,
             "alert_counts": dict(Counter(a["type"] for a in alerts)),
-            "top": self.tracker.top(top_k),
+            "top": self.tracker.top(top_k, only={a["ip"] for a in alerts}),
             "n_events": len(events),
             "seconds": time.perf_counter() - t0,
         }

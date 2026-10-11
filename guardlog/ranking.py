@@ -41,10 +41,10 @@ class AttackerTracker:
         """Let other detectors (e.g. signature hits) add to an IP's score."""
         self.counts[ip] += n
 
-    def top(self, k=10):
-        return [{"ip": ip, "score": c} for c, ip in top_k_heap(self.counts, k)]
-
-
+    def top(self, k=10, only=None):
+        """Top-k by score. If `only` is given, only those IPs are ranked (e.g. IPs that raised an alert)."""
+        counts = self.counts if only is None else {ip: c for ip, c in self.counts.items() if ip in only}
+        return [{"ip": ip, "score": c} for c, ip in top_k_heap(counts, k)]
 if __name__ == "__main__":
     from .parser import parse_file
 
