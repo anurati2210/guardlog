@@ -45,3 +45,10 @@
 - AI did: scenario generator and scoring boilerplate
 - I decided: model the card as bulk log sync (delayed lines arrive as a batch), not just random jitter, because jitter alone did not break the old detector (0 legit IPs flagged); added busy-but-benign IPs (max 9 failures/60 s) so false positives are measurable
 - Finding: old detector's deque stops popping when old-timestamp batches arrive behind newer events, so a batch counts as one burst
+
+
+## Challenge Card 1: order-tolerant detector
+- AI did: boilerplate, unit tests, evaluation table
+- I decided: per-IP sorted failure times with insertion at the true event time and a re-check of only the windows containing the new line; fast path for on-time lines; pruning by max_lateness (900 s, above the 600 s requirement) so memory stays bounded; cooldown in event time; old detector kept for regression and comparison
+- I rejected: reorder buffer with watermark (delays every alert by up to 10 minutes, breaks near-real-time); trusting arrival order; widening the threshold to hide false positives (would miss real attacks)
+- Result: false-positive rate reduced from 49% (jitter) and 74% (batch) to below 5% (see table), all 12 attackers still caught, identical alerts on in-order logs
