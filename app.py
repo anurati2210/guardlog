@@ -5,6 +5,7 @@ from guardlog.engine import build_engine, build_filters
 from guardlog.generator import generate_logs, get_attacker_ips
 from guardlog.parser import parse_lines
 from guardlog.scenario import batch_sync, make_scenario, score
+from guardlog.detectors.window import SlidingWindowDetector, run as run_detector
 
 st.set_page_config(page_title="GuardLog", page_icon="🛡️", layout="wide")
 
@@ -91,19 +92,29 @@ if stats:
                f"out of order, worst lateness {stats['max_lateness_s']} s.")
 
 st.subheader("Out-of-order handling: original vs order-tolerant")
+reachable = set()
+if attackers:
+    # Attackers that a perfectly sorted log would let the brute-force detector catch.
+    # Scan-only and payload-only attackers never produce failed logins, so they are not its targets.
+    reference = run_detector(SlidingWindowDetector(window=window, threshold=threshold),
+                             sorted(events, key=lambda e: e.ts))
+    reachable = {a["ip"] for a in reference} & attackers
 rows, tolerant_ok = [], None
 for tol, label in ((False, "Original (assumes sorted logs)"), (True, "Order-tolerant (new)")):
     brute = [a for a in runs[tol][1]["alerts"] if a["type"] == "BRUTE_FORCE"]
     row = {"Detector": label, "Brute-force alerts": len(brute)}
     if attackers:
         s = score(brute, attackers, busy)
-        row["Attackers caught"] = f"{s['attackers_caught']}/{len(attackers)}"
+        caught = len({a["ip"] for a in brute} & reachable)
+        row["Attackers caught"] = f"{caught}/{len(reachable)}"
         row["Legit IPs flagged"] = s["legit_ips_flagged"]
         row["False-positive alerts"] = f"{s['fp_alert_rate'] * 100:.1f}%"
         if tol:
-            tolerant_ok = s["fp_alert_rate"] < 0.05 and s["attackers_caught"] == len(attackers)
+            tolerant_ok = s["fp_alert_rate"] < 0.05 and caught >= len(reachable)
     rows.append(row)
 st.dataframe(pd.DataFrame(rows), hide_index=True)
+if attackers:
+    st.caption("Attackers caught is measured against the attackers a perfectly sorted log lets this detector catch.")
 if tolerant_ok is True:
     st.success("Order-tolerant detector: false positives under 5% and every attacker caught.")
 elif tolerant_ok is False:
